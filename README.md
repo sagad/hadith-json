@@ -85,39 +85,77 @@ Contoh path:
 
 Lihat `types/index.ts` untuk definisi tipe lengkap.
 
-## Cara Mengisi Terjemahan Indonesia
+## Proses Terjemahan Indonesia (AI-Assisted)
 
-Pipeline saat ini mengisi locale `id` secara otomatis saat generator berjalan:
+Terjemahan locale `id` dibuat dengan pipeline **bantuan AI / machine translation**. Bagian ini menjelaskan prosesnya secara transparan agar mudah diaudit.
 
-1. Scraper mengambil data Arab dan Inggris dari sumber utama.
-2. Data Inggris diterjemahkan otomatis ke Bahasa Indonesia.
-3. Hasil terjemahan disimpan ke `db/by_locale/id/...` dengan `status: "draft"`.
-4. Cache terjemahan disimpan di `.cache/id-translation-cache.json` agar proses ulang lebih cepat dan hemat request.
+### Ringkasan Alur
 
-Jalankan generator:
+1. Data sumber diambil dari teks Inggris (`en`) hasil scraping Sunnah.com.
+2. Generator membaca teks hadits per bab.
+3. Sistem mencoba menerjemahkan teks ke Bahasa Indonesia memakai endpoint machine translation online.
+4. Hasil disimpan ke output locale Indonesia dengan `status: "draft"`.
+5. File bab digabungkan lagi menjadi file per kitab.
+
+### Mode Eksekusi
+
+Ada dua mode untuk menghasilkan locale Indonesia:
+
+1. **Saat scrape penuh**
 
 ```bash
 npm run build
 node dist/index.js
 ```
 
-Untuk mengisi locale Indonesia langsung dari dataset existing (`db/by_chapter`) tanpa scrape ulang:
+2. **Dari data existing tanpa scrape ulang**
 
 ```bash
 npm run generate:id
 ```
 
-Perintah tersebut akan:
+Mode kedua membaca data Inggris yang sudah ada, lalu membangun output Indonesia secara incremental.
 
-1. Membaca data Inggris existing dari `db/by_chapter/...`.
-2. Menerjemahkan ke Indonesia dan menyimpan ke `db/by_locale/id/by_chapter/...`.
-3. Menggabungkan hasilnya ke `db/by_locale/id/by_book/...`.
+### Detail Teknis Translasi
 
-Catatan:
+Pipeline translasi menerapkan beberapa lapisan agar robust untuk volume data besar:
 
-- Jalankan dengan koneksi internet aktif karena terjemahan dilakukan secara online.
-- Untuk kualitas akhir produksi, tetap disarankan proses review manual/editorial pada hasil `draft`.
-- Proses ini bersifat panjang untuk 50k+ hadits. Jika terhenti karena limit provider, jalankan kembali `npm run generate:id`; proses akan melanjutkan (skip file yang sudah jadi).
+1. **Primary machine translation endpoint**
+  Endpoint yang dicoba pertama: Google Translate public endpoint (`translate.googleapis.com`).
+2. **Retry otomatis**
+  Setiap request translasi memiliki retry bertahap ketika terjadi error sementara (misalnya timeout/rate-limit).
+3. **Fallback provider**
+  Jika primary gagal, sistem mencoba provider cadangan (LibreTranslate, lalu MyMemory).
+4. **Chunking teks panjang**
+  Teks panjang dipotong menjadi beberapa chunk agar tidak melebihi batas request.
+5. **Batching**
+  Banyak hadits diterjemahkan per batch untuk menurunkan jumlah request total.
+6. **Cache lokal**
+  Hasil translasi disimpan di `.cache/id-translation-cache.json` supaya proses ulang lebih cepat dan lebih hemat request.
+7. **Resume-friendly**
+  Jika proses terhenti, jalankan lagi generator; file yang sudah ada akan dilewati.
+
+### Penting: Failsafe untuk Menjamin Kelengkapan Dataset
+
+Untuk memastikan pipeline tetap selesai saat provider translasi eksternal tidak stabil, ada mekanisme failsafe di generator:
+
+1. Jika translasi eksternal gagal terus-menerus, sistem dapat mengisi teks dengan fallback aman agar proses tidak berhenti total.
+2. Karena itu, sebagian isi `id` mungkin masih memerlukan penyuntingan lanjutan.
+
+### Status Kualitas Data Indonesia
+
+- Semua data Indonesia ditandai `status: "draft"`.
+- `draft` berarti hasil otomatis dan **belum** dianggap final editorial.
+- Sangat disarankan melakukan review manusia sebelum dipakai untuk kebutuhan publikasi resmi.
+
+### Output yang Dihasilkan
+
+Hasil translasi Indonesia ditulis ke:
+
+- `db/by_locale/id/by_chapter/...`
+- `db/by_locale/id/by_book/...`
+
+Struktur ini memudahkan consumer memilih konsumsi data per bab atau langsung per kitab.
 
 ## Migrasi dari v1
 
