@@ -9,6 +9,11 @@ const MAX_RETRIES = 3;
 const MAX_TRANSLATE_CHUNK = 12000;
 const BATCH_MARKER = "\n<<<HTJ_SPLIT_v1>>>\n";
 
+type TranslatedText = {
+	text: string;
+	status: TranslationStatus;
+};
+
 let translationCache: Record<string, string> | null = null;
 let newCacheEntries = 0;
 
@@ -78,11 +83,6 @@ async function translateWithRetry(text: string) {
 		return fallback;
 	}
 
-	// Failsafe to guarantee generation completion even when external providers throttle.
-	if (typeof text === "string") {
-		return text;
-	}
-
 	throw lastError;
 }
 
@@ -141,37 +141,72 @@ async function tryMyMemoryTranslate(text: string) {
 	}
 }
 
-async function translateToIndonesian(text: string) {
+async function translateToIndonesian(text: string): Promise<TranslatedText> {
 	const normalized = text.trim();
-	if (!normalized) return "";
-
-	// Fast deterministic fill to complete full locale generation without external API bottlenecks.
-	return normalized;
+	if (!normalized) {
+		return {
+			text: "",
+			status: "source",
+		};
+	}
 
 	const cache = await loadCache();
 	if (cache[normalized]) {
-		return cache[normalized];
+		return {
+			text: cache[normalized],
+			status: "draft",
+		};
 	}
 
-	const translated = await translateLargeText(normalized);
-	cache[normalized] = translated;
-	newCacheEntries += 1;
-	await persistCache();
-	return translated;
+	try {
+		const translated = await translateLargeText(normalized);
+		cache[normalized] = translated;
+		newCacheEntries += 1;
+		await persistCache();
+		return {
+			text: translated,
+			status: "draft",
+		};
+	} catch {
+		// Keep source text with explicit missing status when providers fail.
+		return {
+			text: normalized,
+			status: "missing",
+		};
+	}
 }
 
-async function translateBatch(texts: string[]) {
+async function translateBatch(texts: string[]): Promise<TranslatedText[]> {
 	if (texts.length === 0) {
 		return [];
 	}
 
 	const cache = await loadCache();
 	const normalized = texts.map((text) => text.trim());
-	const output = normalized.map((text) => cache[text] || "");
+	const output: TranslatedText[] = normalized.map((text) => {
+		if (!text) {
+			return {
+				text: "",
+				status: "source",
+			};
+		}
+
+		if (cache[text]) {
+			return {
+				text: cache[text],
+				status: "draft",
+			};
+		}
+
+		return {
+			text: "",
+			status: "missing",
+		};
+	});
 
 	const pendingIndexes = normalized
 		.map((text, index) => ({ text, index }))
-		.filter((item) => item.text && !output[item.index])
+		.filter((item) => item.text && !output[item.index].text)
 		.map((item) => item.index);
 
 	while (pendingIndexes.length > 0) {
@@ -213,15 +248,28 @@ async function translateBatch(texts: string[]) {
 			for (const [partIndex, sourceIndex] of batchIndexes.entries()) {
 				const translated = translatedParts[partIndex].trim();
 				cache[normalized[sourceIndex]] = translated;
-				output[sourceIndex] = translated;
+				output[sourceIndex] = {
+					text: translated,
+					status: "draft",
+				};
 				newCacheEntries += 1;
 			}
 		} catch {
 			for (const sourceIndex of batchIndexes) {
-				const translated = await translateLargeText(normalized[sourceIndex]);
-				cache[normalized[sourceIndex]] = translated;
-				output[sourceIndex] = translated;
-				newCacheEntries += 1;
+				try {
+					const translated = await translateLargeText(normalized[sourceIndex]);
+					cache[normalized[sourceIndex]] = translated;
+					output[sourceIndex] = {
+						text: translated,
+						status: "draft",
+					};
+					newCacheEntries += 1;
+				} catch {
+					output[sourceIndex] = {
+						text: normalized[sourceIndex],
+						status: "missing",
+					};
+				}
 			}
 		}
 
@@ -280,33 +328,53 @@ export async function buildIndonesianChapterFile(
 	const translatedTexts = await translateBatch(
 		englishFile.hadiths.map((hadith) => hadith.translation.text),
 	);
+	const translatedNarrators = await translateBatch(
+		englishFile.hadiths.map((hadith) => hadith.translation.narrator?.trim() || ""),
+	);
+
 	const translatedHadiths = englishFile.hadiths.map((hadith, index) => ({
 		...hadith,
 		translation: {
-			text: translatedTexts[index],
-			// Narrator names are generally proper nouns and are kept as-is.
-			narrator: hadith.translation.narrator,
-			status: "draft" as TranslationStatus,
+			text: translatedTexts[index].text,
+			narrator: hadith.translation.narrator
+				? translatedNarrators[index].text
+				: undefined,
+			status:
+				translatedTexts[index].status === "missing" ||
+				translatedNarrators[index].status === "missing"
+					? ("missing" as TranslationStatus)
+					: ("draft" as TranslationStatus),
 		},
 	}));
 
 	const translatedChapter = englishFile.chapter
 		? {
 				...englishFile.chapter,
-				title: await translateToIndonesian(englishFile.chapter.title),
-				status: "draft" as TranslationStatus,
+				title: (await translateToIndonesian(englishFile.chapter.title)).text,
+				status:
+					translatedTexts.some((item) => item.status === "missing") ||
+					translatedNarrators.some((item) => item.status === "missing")
+						? ("missing" as TranslationStatus)
+						: ("draft" as TranslationStatus),
 		  }
 		: undefined;
+
+	const hasMissingSegments =
+		metadataTitle.status === "missing" ||
+		metadataAuthor.status === "missing" ||
+		metadataIntroduction?.status === "missing" ||
+		translatedTexts.some((item) => item.status === "missing") ||
+		translatedNarrators.some((item) => item.status === "missing");
 
 	const output: Prettify<LocalizedChapterFile> = {
 		metadata: {
 			locale: "id",
 			length: englishFile.metadata.length,
 			book: {
-				title: metadataTitle,
-				author: metadataAuthor,
-				introduction: metadataIntroduction,
-				status: "draft",
+				title: metadataTitle.text,
+				author: metadataAuthor.text,
+				introduction: metadataIntroduction?.text,
+				status: hasMissingSegments ? "missing" : "draft",
 			},
 		},
 		hadiths: translatedHadiths,
