@@ -1,8 +1,8 @@
 # hadith-json
 
-A comprehensive JSON database of **50,884 hadiths** — the sayings and actions of Prophet Muhammad ﷺ — in both Arabic and English, scraped from [Sunnah.com](https://sunnah.com/) and covering 17 canonical books.
+Database JSON komprehensif berisi **50.884 hadits** — ucapan dan perbuatan Nabi Muhammad ﷺ — dengan keluaran terpisah per bahasa untuk Arab, Inggris, dan placeholder Indonesia, diambil dari [Sunnah.com](https://sunnah.com/) dan mencakup 17 kitab utama.
 
-## Books
+## Daftar Kitab
 
 | # | English | Arabic |
 |---|---------|--------|
@@ -24,12 +24,85 @@ A comprehensive JSON database of **50,884 hadiths** — the sayings and actions 
 | 16 | The Forty Hadith Qudsi | الأربعون القدسية |
 | 17 | The Forty Hadith of Shah Waliullah | أربعون الشاه ولي الله |
 
-## Data Format
+## Format Data (v2)
 
-Each hadith follows this TypeScript interface:
+Setiap hadits sekarang menggunakan struktur terjemahan spesifik per locale:
 
 ```typescript
-interface Hadith {
+type Locale = "ar" | "en" | "id";
+
+type TranslationStatus = "source" | "missing" | "draft" | "verified";
+
+interface LocalizedHadith {
+  id: number;
+  idInBook: number;
+  chapterId: number;
+  bookId: number;
+  translation: {
+    text: string;
+    narrator?: string;
+    status: TranslationStatus;
+  };
+}
+
+interface LocalizedChapterFile {
+  metadata: {
+    locale: Locale;
+    length: number;
+    book: {
+      title: string;
+      author: string;
+      introduction?: string;
+      status: TranslationStatus;
+    };
+  };
+  chapter?: {
+    id: number;
+    bookId: number;
+    title: string;
+    status: TranslationStatus;
+  };
+  hadiths: LocalizedHadith[];
+}
+```
+
+### Catatan Locale
+
+- `ar`: teks Arab dari sumber.
+- `en`: teks Inggris dari sumber + narator.
+- `id`: lapisan placeholder untuk onboarding terjemahan Indonesia (awal: `status: "missing"`).
+
+Database tersedia per locale di bawah `db/by_locale/`:
+
+- **`db/by_locale/{locale}/by_book/`** — satu file JSON per kitab untuk locale tersebut.
+- **`db/by_locale/{locale}/by_chapter/`** — satu file JSON per bab untuk locale tersebut.
+
+Contoh path:
+
+- `db/by_locale/ar/by_chapter/the_9_books/bukhari/1.json`
+- `db/by_locale/en/by_book/the_9_books/bukhari.json`
+- `db/by_locale/id/by_chapter/the_9_books/bukhari/1.json`
+
+Lihat `types/index.ts` untuk definisi tipe lengkap.
+
+## Migrasi dari v1
+
+- v2 adalah rilis breaking change yang mengganti output bilingual satu file menjadi file terpisah per locale.
+- Field lama seperti `hadith.arabic` dan `hadith.english` diganti menjadi `hadith.translation` pada file per locale.
+- Consumer sebaiknya memilih path locale terlebih dahulu, lalu membaca field `translation`.
+
+> [!WARNING]
+> Gunakan tag versi tertentu saat mengambil file langsung dari GitHub — format data dapat berubah pada `main`.
+>
+> ✅ `https://github.com/AhmedBaset/hadith-json/blob/v2.0.0/db/by_locale/en/by_chapter/the_9_books/bukhari/1.json`
+> ❌ `https://github.com/AhmedBaset/hadith-json/blob/main/db/by_locale/en/by_chapter/the_9_books/bukhari/1.json`
+
+## Referensi Legacy
+
+Interface hadits v1:
+
+```typescript
+interface HadithV1 {
   id: number;
   chapterId: number;
   bookId: number;
@@ -41,55 +114,44 @@ interface Hadith {
 }
 ```
 
-The database is available in two layouts under the `db/` folder:
-
-- **`db/by_book/`** — one JSON file per book
-- **`db/by_chapter/`** — one JSON file per chapter within each book
-
-See [`types/index.d.ts`](./types/index.d.ts) for all type definitions.
-
-> [!WARNING]
-> Pin to a specific tag when fetching files directly from GitHub — the data format may change on `main`.
->
-> ✅ `https://github.com/AhmedBaset/hadith-json/blob/v1.2.0/db/by_chapter/the_9_books/bukhari/1.json`  
-> ❌ `https://github.com/AhmedBaset/hadith-json/blob/main/db/by_chapter/the_9_books/bukhari/1.json`
-
-## Projects Using This Data
+## Proyek yang Menggunakan Data Ini
 
 <!-- - [App Name](https://github.com/username/app-name) — description of app. [GitHub](https://github.com/username/app-name) | [Website](https://app-name.com) | [App Store](https://apps.apple.com/app-name) -->
 
-> Using this dataset in your project? [Open a pull request](https://github.com/AhmedBaset/hadith-json/edit/main/README.md) to add it to the list!
+> Sedang menggunakan dataset ini di proyekmu? [Buka pull request](https://github.com/AhmedBaset/hadith-json/edit/main/README.md) untuk menambahkannya ke daftar!
 
-## Project Structure
+## Struktur Proyek
 
 ```
 .
 ├── db/
-│   ├── by_book/
-│   │   ├── the_9_books/        # bukhari.json, muslim.json, ...
-│   │   ├── forties/            # nawawi40.json, ...
-│   │   └── other_books/
-│   └── by_chapter/
-│       ├── the_9_books/        # bukhari/1.json, muslim/1.json, ...
-│       ├── forties/            # nawawi40/1.json, ...
-│       └── other_books/        # RyadSalihin/1.json, ...
+│   └── by_locale/
+│       ├── ar/
+│       │   ├── by_book/
+│       │   └── by_chapter/
+│       ├── en/
+│       │   ├── by_book/
+│       │   └── by_chapter/
+│       └── id/
+│           ├── by_book/
+│           └── by_chapter/
 ├── src/
 │   ├── index.ts
 │   ├── types/
 │   └── helpers/
 └── types/
-    └── index.d.ts
+    └── index.ts
 ```
 
-## Known Limitations
+## Keterbatasan yang Diketahui
 
-- **Musnad Ahmad**: Chapters 8–30 are missing from the source data on Sunnah.com. If you know of a better source, please open an issue.
-- The scraping code in `src/` was written as a learning exercise and could use some refactoring — though it works fine as-is.
+- **Musnad Ahmad**: Bab 8–30 belum tersedia pada data sumber di Sunnah.com. Jika kamu mengetahui sumber yang lebih baik, silakan buka issue.
+- Kode scraping pada `src/` awalnya ditulis sebagai sarana belajar dan masih bisa ditingkatkan dengan refactor, meskipun saat ini berjalan dengan baik.
 
-## Contributing
+## Kontribusi
 
-Contributions are welcome! Feel free to open an issue or pull request for data corrections, new formats, or code improvements.
+Kontribusi sangat terbuka. Silakan buat issue atau pull request untuk koreksi data, format baru, atau peningkatan kode.
 
 ---
 
-*May Allah accept this work and make it beneficial. Ameen.*
+*Semoga Allah menerima amal ini dan menjadikannya bermanfaat. Aamiin.*

@@ -2,7 +2,11 @@ type Prettify<T> = {
 	[K in keyof T]: T[K];
 } & {};
 
-interface Hadith {
+type Locale = "ar" | "en" | "id";
+
+type TranslationStatus = "source" | "missing" | "draft" | "verified";
+
+interface RawHadith {
 	id: number;
 	idInBook: number;
 	arabic: string;
@@ -14,45 +18,73 @@ interface Hadith {
 	bookId: number;
 }
 
-interface Introduction {
+interface ScrapedIntroduction {
 	arabic: string;
 	english: string;
 }
 
-interface Chapter {
+interface ScrapedChapter {
 	id: number;
 	bookId: number;
 	arabic: string;
 	english: string;
 }
 
-interface BookInfo {
+interface ScrapedData {
+	hadiths: RawHadith[];
+	introduction?: ScrapedIntroduction;
+	chapter?: ScrapedChapter;
+}
+
+interface LocalizedText {
+	text: string;
+	narrator?: string;
+	status: TranslationStatus;
+}
+
+interface LocalizedChapter {
+	id: number;
+	bookId: number;
+	title: string;
+	status: TranslationStatus;
+}
+
+interface LocalizedBookInfo {
 	title: string;
 	author: string;
 	introduction: string | undefined;
+	status: TranslationStatus;
 }
 
-interface Metadata {
+interface LocalizedMetadata {
+	locale: Locale;
 	length: number;
-	arabic: Prettify<BookInfo>;
-	english: Prettify<BookInfo>;
+	book: Prettify<LocalizedBookInfo>;
 }
 
-interface ChapterFile {
-	metadata: Prettify<Metadata>;
-	hadiths: Hadith[];
-	chapter: Chapter | undefined;
+interface LocalizedHadith {
+	id: number;
+	idInBook: number;
+	chapterId: number;
+	bookId: number;
+	translation: Prettify<LocalizedText>;
 }
 
-interface BookMetadata extends Metadata {
+interface LocalizedChapterFile {
+	metadata: Prettify<LocalizedMetadata>;
+	hadiths: LocalizedHadith[];
+	chapter: LocalizedChapter | undefined;
+}
+
+interface LocalizedBookMetadata extends LocalizedMetadata {
 	id: number;
 }
 
-interface BookFile {
+interface LocalizedBookFile {
 	id: number;
-	metadata: Prettify<BookMetadata>;
-	chapters: Chapter[];
-	hadiths: Hadith[];
+	metadata: Prettify<LocalizedBookMetadata>;
+	chapters: LocalizedChapter[];
+	hadiths: LocalizedHadith[];
 }
 
 interface ScrapedBook {

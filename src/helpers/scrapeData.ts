@@ -25,11 +25,7 @@ export async function scrapeData(route: string, bookId: number) {
 	const allHadiths = $(".AllHadith").children(".actualHadithContainer");
 
 	//* All returned information
-	const output: {
-		hadiths: Hadith[];
-		introduction?: Introduction;
-		chapter?: Chapter;
-	} = {
+	const output: ScrapedData = {
 		hadiths: [],
 	};
 
