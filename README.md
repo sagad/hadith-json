@@ -1,6 +1,6 @@
 # hadith-json
 
-Database JSON komprehensif berisi **50.884 hadits** — ucapan dan perbuatan Nabi Muhammad ﷺ — dengan keluaran terpisah per bahasa untuk Arab, Inggris, dan placeholder Indonesia, diambil dari [Sunnah.com](https://sunnah.com/) dan mencakup 17 kitab utama.
+Database JSON komprehensif berisi **50.884 hadits** — ucapan dan perbuatan Nabi Muhammad ﷺ — dengan keluaran terpisah per bahasa untuk Arab, Inggris, dan Indonesia, diambil dari [Sunnah.com](https://sunnah.com/) dan mencakup 17 kitab utama.
 
 ## Daftar Kitab
 
@@ -70,7 +70,7 @@ interface LocalizedChapterFile {
 
 - `ar`: teks Arab dari sumber.
 - `en`: teks Inggris dari sumber + narator.
-- `id`: lapisan placeholder untuk onboarding terjemahan Indonesia (awal: `status: "missing"`).
+- `id`: terjemahan otomatis Bahasa Indonesia dari locale Inggris (`status: "draft"`) yang siap ditinjau/ditingkatkan.
 
 Database tersedia per locale di bawah `db/by_locale/`:
 
@@ -84,6 +84,40 @@ Contoh path:
 - `db/by_locale/id/by_chapter/the_9_books/bukhari/1.json`
 
 Lihat `types/index.ts` untuk definisi tipe lengkap.
+
+## Cara Mengisi Terjemahan Indonesia
+
+Pipeline saat ini mengisi locale `id` secara otomatis saat generator berjalan:
+
+1. Scraper mengambil data Arab dan Inggris dari sumber utama.
+2. Data Inggris diterjemahkan otomatis ke Bahasa Indonesia.
+3. Hasil terjemahan disimpan ke `db/by_locale/id/...` dengan `status: "draft"`.
+4. Cache terjemahan disimpan di `.cache/id-translation-cache.json` agar proses ulang lebih cepat dan hemat request.
+
+Jalankan generator:
+
+```bash
+npm run build
+node dist/index.js
+```
+
+Untuk mengisi locale Indonesia langsung dari dataset existing (`db/by_chapter`) tanpa scrape ulang:
+
+```bash
+npm run generate:id
+```
+
+Perintah tersebut akan:
+
+1. Membaca data Inggris existing dari `db/by_chapter/...`.
+2. Menerjemahkan ke Indonesia dan menyimpan ke `db/by_locale/id/by_chapter/...`.
+3. Menggabungkan hasilnya ke `db/by_locale/id/by_book/...`.
+
+Catatan:
+
+- Jalankan dengan koneksi internet aktif karena terjemahan dilakukan secara online.
+- Untuk kualitas akhir produksi, tetap disarankan proses review manual/editorial pada hasil `draft`.
+- Proses ini bersifat panjang untuk 50k+ hadits. Jika terhenti karena limit provider, jalankan kembali `npm run generate:id`; proses akan melanjutkan (skip file yang sudah jadi).
 
 ## Migrasi dari v1
 

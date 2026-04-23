@@ -8,6 +8,7 @@ import { books } from "./books";
 import { style } from "./helpers/consoleColor";
 import createDirs from "./helpers/createDirs";
 import createFile from "./helpers/createFile";
+import { buildIndonesianChapterFile } from "./helpers/buildIndonesianChapterFile";
 import { formatFile } from "./helpers/formatFile";
 import { scrapeData } from "./helpers/scrapeData";
 
@@ -94,6 +95,7 @@ async function createChaptersFiles() {
 
 			//* Format Data to be like {ChapterFile} interface
 			const formattedData = formatFile(book, data);
+			formattedData.id = await buildIndonesianChapterFile(formattedData.en);
 
 			for (const locale of SUPPORTED_LOCALES) {
 				//* Create File db/by_locale/${locale}/by_chapter/{book}/{chapter}.json

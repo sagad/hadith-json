@@ -7,6 +7,7 @@
 		"dev": "tsup --watch",
 		"build": "tsup",
 		"start": "node dist/index.js",
+		"generate:id": "tsup src/generateIndonesian.ts --format cjs --sourcemap --out-dir dist --clean false && node dist/generateIndonesian.js",
 		"format": "biome check . --write"
 	},
 	"keywords": [],
