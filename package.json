@@ -11,6 +11,7 @@
 		"generate:id:force": "rm -rf db/by_locale/id && npm run generate:id",
 		"validate:id": "tsup src/validateIndonesian.ts --format cjs --sourcemap --out-dir dist --clean false && node dist/validateIndonesian.js",
 		"fix:id": "npm run generate:id:force && npm run validate:id",
+		"fix:id:clean": "rm -f .cache/id-translation-cache.json && npm run fix:id",
 		"format": "biome check . --write"
 	},
 	"keywords": [],
