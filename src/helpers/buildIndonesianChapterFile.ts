@@ -9,6 +9,62 @@ const MAX_RETRIES = 3;
 const MAX_TRANSLATE_CHUNK = 12000;
 const BATCH_MARKER = "\n<<<HTJ_SPLIT_v1>>>\n";
 
+const EN_MARKERS = new Set([
+	"the",
+	"and",
+	"of",
+	"to",
+	"in",
+	"that",
+	"is",
+	"was",
+	"with",
+	"for",
+	"from",
+	"this",
+	"you",
+	"they",
+	"have",
+	"will",
+	"not",
+	"who",
+	"said",
+	"narrated",
+	"messenger",
+	"reported",
+]);
+
+const ID_MARKERS = new Set([
+	"dan",
+	"yang",
+	"di",
+	"ke",
+	"dari",
+	"untuk",
+	"dengan",
+	"adalah",
+	"beliau",
+	"rasulullah",
+	"aku",
+	"saya",
+	"kami",
+	"kamu",
+	"dia",
+	"mereka",
+	"telah",
+	"tidak",
+	"pada",
+	"dalam",
+	"seperti",
+	"ketika",
+	"lalu",
+	"kemudian",
+	"shalat",
+	"salat",
+	"doa",
+	"nabi",
+]);
+
 type TranslatedText = {
 	text: string;
 	status: TranslationStatus;
@@ -16,6 +72,53 @@ type TranslatedText = {
 
 let translationCache: Record<string, string> | null = null;
 let newCacheEntries = 0;
+
+function normalizeForComparison(text: string) {
+	return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function looksLikeEnglishDominant(text: string) {
+	const words = text
+		.toLowerCase()
+		.replace(/[^a-z\s]/g, " ")
+		.split(/\s+/)
+		.filter(Boolean);
+
+	if (words.length < 8) {
+		return false;
+	}
+
+	let enCount = 0;
+	let idCount = 0;
+	for (const word of words) {
+		if (EN_MARKERS.has(word)) enCount += 1;
+		if (ID_MARKERS.has(word)) idCount += 1;
+	}
+
+	const enRatio = enCount / words.length;
+	const idRatio = idCount / words.length;
+
+	return enCount >= 4 && enRatio >= 0.08 && enCount >= idCount * 2 && idRatio < 0.07;
+}
+
+function isUntranslatedCandidate(source: string, translated: string) {
+	const normalizedSource = normalizeForComparison(source);
+	const normalizedTranslated = normalizeForComparison(translated);
+
+	if (!normalizedTranslated) {
+		return true;
+	}
+
+	if (normalizedSource === normalizedTranslated) {
+		return true;
+	}
+
+	if (translated.length >= 40 && looksLikeEnglishDominant(translated)) {
+		return true;
+	}
+
+	return false;
+}
 
 async function loadCache() {
 	if (translationCache) return translationCache;
@@ -67,6 +170,10 @@ async function translateWithRetry(text: string) {
 				throw new Error("Empty translation response");
 			}
 
+			if (isUntranslatedCandidate(text, translated)) {
+				throw new Error("Provider returned untranslated content");
+			}
+
 			return translated;
 		} catch (error) {
 			lastError = error;
@@ -88,10 +195,10 @@ async function translateWithRetry(text: string) {
 
 async function translateWithFallbackProviders(text: string) {
 	const libre = await tryLibreTranslate(text);
-	if (libre) return libre;
+	if (libre && !isUntranslatedCandidate(text, libre)) return libre;
 
 	const myMemory = await tryMyMemoryTranslate(text);
-	if (myMemory) return myMemory;
+	if (myMemory && !isUntranslatedCandidate(text, myMemory)) return myMemory;
 
 	return null;
 }
@@ -152,10 +259,17 @@ async function translateToIndonesian(text: string): Promise<TranslatedText> {
 
 	const cache = await loadCache();
 	if (cache[normalized]) {
-		return {
-			text: cache[normalized],
-			status: "draft",
-		};
+		const cached = cache[normalized];
+		if (!isUntranslatedCandidate(normalized, cached)) {
+			return {
+				text: cached,
+				status: "draft",
+			};
+		}
+
+		delete cache[normalized];
+		newCacheEntries += 1;
+		await persistCache();
 	}
 
 	try {
@@ -191,11 +305,16 @@ async function translateBatch(texts: string[]): Promise<TranslatedText[]> {
 			};
 		}
 
-		if (cache[text]) {
+		if (cache[text] && !isUntranslatedCandidate(text, cache[text])) {
 			return {
 				text: cache[text],
 				status: "draft",
 			};
+		}
+
+		if (cache[text]) {
+			delete cache[text];
+			newCacheEntries += 1;
 		}
 
 		return {
@@ -247,6 +366,10 @@ async function translateBatch(texts: string[]): Promise<TranslatedText[]> {
 
 			for (const [partIndex, sourceIndex] of batchIndexes.entries()) {
 				const translated = translatedParts[partIndex].trim();
+				if (isUntranslatedCandidate(normalized[sourceIndex], translated)) {
+					throw new Error("Batch part returned untranslated content");
+				}
+
 				cache[normalized[sourceIndex]] = translated;
 				output[sourceIndex] = {
 					text: translated,

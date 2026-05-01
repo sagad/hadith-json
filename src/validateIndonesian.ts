@@ -15,9 +15,36 @@ const EN_MARKERS = new Set([
 	"was",
 	"with",
 	"for",
+	"from",
+	"this",
+	"you",
+	"they",
+	"have",
+	"will",
+	"not",
+	"who",
+	"said",
+	"said:",
 	"narrated",
 	"messenger",
-	"allah",
+	"reported",
+	"upon",
+	"him",
+	"her",
+	"their",
+	"were",
+	"had",
+	"his",
+	"she",
+	"he",
+	"them",
+	"when",
+	"then",
+	"prayer",
+	"prayed",
+	"rak'ahs",
+	"rakah",
+	"rakahs",
 ]);
 
 const ID_MARKERS = new Set([
@@ -31,6 +58,27 @@ const ID_MARKERS = new Set([
 	"adalah",
 	"beliau",
 	"rasulullah",
+	"aku",
+	"saya",
+	"kami",
+	"kamu",
+	"dia",
+	"mereka",
+	"telah",
+	"tidak",
+	"pada",
+	"dalam",
+	"seperti",
+	"ketika",
+	"lalu",
+	"kemudian",
+	"shalat",
+	"salat",
+	"doa",
+	"riwayat",
+	"meriwayatkan",
+	"berkata",
+	"nabi",
 	"allah",
 ]);
 
@@ -123,7 +171,16 @@ function looksLikeEnglish(text: string) {
 		if (ID_MARKERS.has(word)) idCount += 1;
 	}
 
-	return enCount >= 2 && enCount > idCount;
+	const enRatio = enCount / words.length;
+	const idRatio = idCount / words.length;
+
+	// A text is considered English-like only when English markers are clearly dominant.
+	return (
+		enCount >= 4 &&
+		enRatio >= 0.08 &&
+		enCount >= idCount * 2 &&
+		idRatio < 0.07
+	);
 }
 
 async function walk(dir: string): Promise<string[]> {

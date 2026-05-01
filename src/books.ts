@@ -602,13 +602,13 @@ export const books: ScrapedBook[] = [
 			author: "Imam Yahya ibn Sharaf al-Nawawi",
 		},
 		length: 42,
-		route: { base: "nawawi40", chapters: [""] },
+		route: { base: "nawawi40", chapters: ["all"] },
 		path: ["forties", "nawawi40"],
 	},
 	//* Qudsi40
 	{
 		id: 11,
-		route: { base: "qudsi40", chapters: [""] },
+		route: { base: "qudsi40", chapters: ["all"] },
 		path: ["forties", "qudsi40"],
 		arabic: {
 			title: "الأربعون القدسية",
@@ -622,7 +622,7 @@ export const books: ScrapedBook[] = [
 	//* Shahwaliullah40
 	{
 		id: 12,
-		route: { base: "shahwaliullah40", chapters: [""] },
+		route: { base: "shahwaliullah40", chapters: ["all"] },
 		path: ["forties", "shahwaliullah40"],
 		arabic: {
 			title: "أربعون ولي الله الدهلوي",
